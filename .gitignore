@@ -3,6 +3,9 @@ __pycache__/
 .venv/
 venv/
 .env
+.flask_secret
 accounts.txt
 requests.txt
+audit_log.txt
 *.tmp
+employees.txt

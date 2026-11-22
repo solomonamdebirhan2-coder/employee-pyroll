@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 
-REQUEST_FILE = Path("requests.txt")
+REQUEST_FILE = Path(__file__).resolve().parent / "requests.txt"
 EDITABLE_FIELDS = {
     "full_name", "date_of_birth", "phone", "email",
     "department", "position", "basic_salary", "house_allowance",
@@ -12,6 +12,9 @@ EDITABLE_FIELDS = {
 
 
 def load_requests():
+    from storage import postgres_enabled, load_collection
+    if postgres_enabled():
+        return load_collection("requests", [])
     if not REQUEST_FILE.exists():
         return []
     try:
@@ -24,6 +27,10 @@ def load_requests():
 
 
 def save_requests(requests):
+    from storage import postgres_enabled, save_collection
+    if postgres_enabled():
+        save_collection("requests", requests)
+        return
     temporary = REQUEST_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(requests, indent=4), encoding="utf-8")
     temporary.replace(REQUEST_FILE)

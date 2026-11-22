@@ -6,7 +6,7 @@ import secrets
 from pathlib import Path
 import sys
 
-ACCOUNT_FILE = Path("accounts.txt")
+ACCOUNT_FILE = Path(__file__).resolve().parent / "accounts.txt"
 ADMIN_ID = "TTBR/0030/18"
 ITERATIONS = 240_000
 
@@ -18,6 +18,9 @@ def _hash_password(password, salt=None):
 
 
 def _load_accounts():
+    from storage import postgres_enabled, load_collection
+    if postgres_enabled():
+        return load_collection("accounts", {})
     if not ACCOUNT_FILE.exists():
         return {}
     try:
@@ -28,6 +31,10 @@ def _load_accounts():
 
 
 def _save_accounts(accounts):
+    from storage import postgres_enabled, save_collection
+    if postgres_enabled():
+        save_collection("accounts", accounts)
+        return
     temporary = ACCOUNT_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(accounts, indent=4), encoding="utf-8")
     temporary.replace(ACCOUNT_FILE)
@@ -103,6 +110,15 @@ def create_employee_account(employee_id):
     accounts[employee_id] = _new_account("USER", temporary_password, True)
     _save_accounts(accounts)
     return temporary_password
+
+
+def account_exists(employee_id):
+    return employee_id in _load_accounts()
+
+
+def is_account_active(employee_id):
+    account = _load_accounts().get(employee_id)
+    return bool(account and account.get("active", False))
 
 
 def authenticate(employee_id, password):

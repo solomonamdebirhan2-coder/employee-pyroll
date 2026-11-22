@@ -11,6 +11,8 @@ import request_manager
 
 class SecurityWorkflowTests(unittest.TestCase):
     def setUp(self):
+        self.original_account_file = auth.ACCOUNT_FILE
+        self.original_request_file = request_manager.REQUEST_FILE
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
         auth.ACCOUNT_FILE = root / "accounts.json"
@@ -21,6 +23,8 @@ class SecurityWorkflowTests(unittest.TestCase):
         }
 
     def tearDown(self):
+        auth.ACCOUNT_FILE = self.original_account_file
+        request_manager.REQUEST_FILE = self.original_request_file
         self.temp.cleanup()
 
     def test_first_run_creates_brhanu_as_admin_and_users_as_temporary_accounts(self):
