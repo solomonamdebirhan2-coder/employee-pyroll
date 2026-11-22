@@ -748,5 +748,490 @@ def main():
             print("Invalid choice. Please select 1 to 9.")
 
 # 12. Start application
+# ============================================================
+# SECURITY LAYER: LOGIN, ROLES, AND TWO-WAY APPROVAL
+# The original payroll functions above are preserved.
+# ============================================================
+import getpass
+import secrets
+from auth import (
+    initialize_accounts, create_employee_account, authenticate,
+    change_password, set_account_active, get_account_permissions,
+    update_account_permissions, AVAILABLE_PERMISSIONS
+)
+import request_manager as requests
+
+
+def persist_employee_data():
+    """Atomically save employee data; raise errors so approvals cannot be falsely completed."""
+    temporary = "employees.tmp"
+    with open(temporary, "w", encoding="utf-8") as file:
+        json.dump(employees, file, indent=4)
+    import os
+    os.replace(temporary, "employees.txt")
+
+
+original_register_employee = register_employee
+
+
+def register_employee():
+    """Keep the original registration flow, then create a temporary-password account."""
+    before = set(employees)
+    original_register_employee()
+    added = set(employees) - before
+    if not added:
+        return
+    employee_id = next(iter(added))
+    try:
+        temporary_password = create_employee_account(employee_id)
+        persist_employee_data()
+        print("\nEmployee account created.")
+        print("Give this temporary password privately to the employee:")
+        print(temporary_password)
+        print("The employee must change it at first login.")
+    except Exception as error:
+        employees.pop(employee_id, None)
+        print("Account creation failed. Registration was cancelled:", error)
+
+
+
+def prompt_new_password(employee_id):
+    while True:
+        password = getpass.getpass("New password (at least 8 characters, uppercase, lowercase, and number): ")
+        confirmation = getpass.getpass("Confirm new password: ")
+        if password != confirmation:
+            print("Passwords do not match.")
+            continue
+        try:
+            change_password(employee_id, password)
+            print("Password changed successfully.")
+            return True
+        except ValueError as error:
+            print(error)
+
+
+def login():
+    print("\n========== SECURE LOGIN ==========")
+    employee_id = input("Employee ID: ").strip().upper()
+    password = getpass.getpass("Password: ")
+    session = authenticate(employee_id, password)
+    if session is None:
+        print("Invalid employee ID/password, or the account is inactive.")
+        return None
+
+    if session["must_change_password"]:
+        print("\nYou must change your temporary password before continuing.")
+        if not prompt_new_password(employee_id):
+            return None
+    return session
+
+
+def show_personal_profile(employee_id):
+    details = employees.get(employee_id)
+    if not details:
+        print("Your employee record could not be found. Contact the administrator.")
+        return
+    print("\n========== MY PROFILE ==========")
+    print("Employee ID:", employee_id)
+    for label, field in [
+        ("Full Name", "full_name"), ("Date of Birth", "date_of_birth"),
+        ("Age", "age"), ("Phone", "phone"), ("Email", "email"),
+        ("Department", "department"), ("Position", "position"),
+        ("Account Status", "account_status")
+    ]:
+        print(f"{label}: {details.get(field, 'ACTIVE' if field == 'account_status' else 'Not available')}")
+
+
+def show_personal_payroll(employee_id):
+    details = employees.get(employee_id)
+    if not details:
+        print("Your employee record could not be found.")
+        return
+    basic = float(details.get("basic_salary", 0))
+    allowances = sum(float(details.get(field, 0)) for field in
+                     ("house_allowance", "transport_allowance", "other_allowance"))
+    gross = basic + allowances
+    pension = basic * 0.07
+    if gross <= 2000:
+        rate, deduction = 0, 0
+    elif gross <= 4000:
+        rate, deduction = 0.15, 300
+    elif gross <= 7000:
+        rate, deduction = 0.20, 500
+    elif gross <= 10000:
+        rate, deduction = 0.25, 850
+    elif gross <= 14000:
+        rate, deduction = 0.30, 1350
+    else:
+        rate, deduction = 0.35, 2050
+    tax = gross * rate - deduction
+    net = gross - pension - tax
+    print("\n========== MY PAYROLL ==========")
+    print("Employee:", details.get("full_name", "Not available"))
+    print(f"Basic salary:       {basic:,.2f}")
+    print(f"Allowances:         {allowances:,.2f}")
+    print(f"Gross salary:       {gross:,.2f}")
+    print(f"Pension (7%):       {pension:,.2f}")
+    print(f"Income tax:         {tax:,.2f}")
+    print(f"Net salary:         {net:,.2f}")
+
+
+def request_field_change(employee_id, requester_id, requester_role):
+    allowed = sorted(requests.EDITABLE_FIELDS)
+    print("\nInformation fields that can be changed:")
+    for index, field in enumerate(allowed, 1):
+        print(f"{index}. {field}")
+    while True:
+        choice = input("Choose field number: ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(allowed):
+            field = allowed[int(choice) - 1]
+            break
+        print("Choose a valid field number.")
+
+    new_value = input(f"Enter proposed new value for {field}: ").strip()
+    if not new_value:
+        print("The proposed value cannot be empty.")
+        return
+    if field in {"basic_salary", "house_allowance", "transport_allowance", "other_allowance"}:
+        try:
+            new_value = float(new_value)
+            if not math.isfinite(new_value) or new_value < 0:
+                raise ValueError
+        except ValueError:
+            print("Salary and allowance values must be valid non-negative numbers.")
+            return
+    elif field == "date_of_birth":
+        try:
+            parsed = datetime.strptime(new_value, "%Y-%m-%d").date()
+            age = calculate_age(parsed)
+            if parsed >= date.today() or not 18 <= age <= 100:
+                raise ValueError
+            new_value = parsed.isoformat()
+        except ValueError:
+            print("Enter a valid date (YYYY-MM-DD) for an employee aged 18–100.")
+            return
+    elif field == "full_name":
+        if not re.fullmatch(r"[A-Za-z]+(?: [A-Za-z]+)+", new_value):
+            print("Enter a valid full name using letters and spaces.")
+            return
+    elif field in {"department", "position"}:
+        if not re.fullmatch(r"[A-Za-z]+(?:[ '&-][A-Za-z]+)*", new_value):
+            print("Enter valid text without numbers.")
+            return
+    elif field == "email":
+        pattern = r"[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
+        if not re.fullmatch(pattern, new_value):
+            print("Enter a valid email address.")
+            return
+    elif field == "phone":
+        normalized = new_value.replace(" ", "").replace("-", "")
+        if normalized.startswith(("09", "07")):
+            normalized = "+251" + normalized[1:]
+        elif normalized.startswith(("2519", "2517")):
+            normalized = "+" + normalized
+        if not (len(normalized) == 13 and normalized.startswith(("+2519", "+2517")) and normalized[1:].isdigit()):
+            print("Enter a valid Ethiopian mobile number.")
+            return
+        new_value = normalized
+
+    reason = input("Reason for this change request: ").strip()
+    try:
+        item = requests.submit_change(
+            employee_id, requester_id, requester_role, field, new_value, reason, employees
+        )
+        print(f"Request {item['request_id']} submitted. It is pending approval.")
+    except (ValueError, RuntimeError) as error:
+        print("Could not submit request:", error)
+
+
+def request_deactivation(employee_id, requester_id, requester_role):
+    reason = input("Reason for deactivation request: ").strip()
+    try:
+        item = requests.submit_deactivation(
+            employee_id, requester_id, requester_role, reason, employees
+        )
+        print(f"Deactivation request {item['request_id']} submitted for approval.")
+    except (ValueError, RuntimeError) as error:
+        print("Could not submit request:", error)
+
+
+def show_requests_for_employee(employee_id):
+    try:
+        items = [item for item in requests.load_requests() if item["employee_id"] == employee_id]
+    except RuntimeError as error:
+        print(error)
+        return
+    if not items:
+        print("No requests found for your employee record.")
+        return
+    print("\n========== MY REQUEST HISTORY ==========")
+    for item in items:
+        print(f"\n{item['request_id']} | {item['request_type']} | {item['status']}")
+        print("Requested by:", item["requested_by"])
+        print("Reason:", item["reason"])
+        if item["request_type"] == "UPDATE":
+            print(f"Change: {item['field_name']} | {item['old_value']} -> {item['new_value']}")
+        print("Created:", item["created_at"])
+        if item["decided_at"]:
+            print("Decision by:", item["approved_by"], "|", item["decided_at"])
+
+
+def pending_requests_for_approver(session):
+    try:
+        items = requests.load_requests()
+    except RuntimeError as error:
+        print(error)
+        return
+    pending = []
+    for item in items:
+        if item["status"] != "PENDING":
+            continue
+        if session["role"] == "ADMIN" and item["requester_role"] == "USER":
+            pending.append(item)
+        elif session["role"] == "USER" and item["requester_role"] == "ADMIN" and item["employee_id"] == session["employee_id"]:
+            pending.append(item)
+
+    if not pending:
+        print("No pending requests require your approval.")
+        return
+    print("\n========== REQUESTS AWAITING YOUR APPROVAL ==========")
+    for item in pending:
+        print(f"\n{item['request_id']} | {item['request_type']} | Employee: {item['employee_id']}")
+        print("Requested by:", item["requested_by"])
+        print("Reason:", item["reason"])
+        if item["request_type"] == "UPDATE":
+            print(f"Proposed: {item['field_name']} = {item['new_value']}")
+    request_id = input("\nEnter request ID to review (or press Enter to return): ").strip().upper()
+    if not request_id:
+        return
+    if not any(item["request_id"] == request_id for item in pending):
+        print("That request is not assigned to your approval.")
+        return
+    decision = input("Approve or reject? (A/R): ").strip().upper()
+    if decision not in ("A", "R"):
+        print("Invalid decision. No changes made.")
+        return
+    try:
+        decided = requests.decide_request(
+            request_id, session["employee_id"], session["role"],
+            "APPROVED" if decision == "A" else "REJECTED",
+            employees, persist_employee_data, set_account_active
+        )
+        print(f"{decided['request_id']} was {decided['status'].lower()}.")
+    except (ValueError, PermissionError, RuntimeError, OSError) as error:
+        print("Could not decide request:", error)
+
+
+def change_own_password(session):
+    print("\n--- Change Password ---")
+    current = getpass.getpass("Current password: ")
+    verified = authenticate(session["employee_id"], current)
+    if not verified:
+        print("Current password is incorrect.")
+        return
+    prompt_new_password(session["employee_id"])
+
+
+def manage_special_permissions(session):
+    print("\n========== GRANT / REVOKE SPECIAL PERMISSIONS ==========")
+    target = input("Enter employee ID: ").strip().upper()
+    if target not in employees:
+        print("Employee not found.")
+        return
+    if target == "TTBR/0030/18":
+        print("The first administrator's full access is managed through the administrator role.")
+        return
+
+    current = get_account_permissions(target)
+    print("\nCurrent special permissions:")
+    if current:
+        for permission in current:
+            print("-", AVAILABLE_PERMISSIONS[permission])
+    else:
+        print("None")
+
+    permission_keys = list(AVAILABLE_PERMISSIONS)
+    print("\nAvailable permissions:")
+    for index, key in enumerate(permission_keys, 1):
+        print(f"{index}. {AVAILABLE_PERMISSIONS[key]} ({key})")
+    choice = input("Choose permission number: ").strip()
+    if not choice.isdigit() or not 1 <= int(choice) <= len(permission_keys):
+        print("Invalid permission choice.")
+        return
+    permission = permission_keys[int(choice) - 1]
+    action = input("Grant or revoke? (G/R): ").strip().upper()
+    if action not in ("G", "R"):
+        print("Invalid action.")
+        return
+    try:
+        updated = update_account_permissions(session["employee_id"], target, permission, action == "G")
+        print("Permission list updated.")
+        print("Current permissions:", ", ".join(updated) if updated else "None")
+    except (ValueError, PermissionError) as error:
+        print("Could not update permissions:", error)
+
+
+def employee_special_access(session):
+    permissions = get_account_permissions(session["employee_id"])
+    actions = {
+        "VIEW_ALL_EMPLOYEES": ("View all employee records", display_employees),
+        "SEARCH_EMPLOYEES": ("Search employee records", search_employee),
+        "VIEW_ALL_PAYROLL": ("View organization-wide payroll", display_payroll),
+        "CALCULATE_GROSS_SALARY": ("Calculate gross salary for an employee", calculate_gross_salary),
+        "REGISTER_EMPLOYEE": ("Register a new employee", register_employee),
+    }
+    available = [(key, actions[key]) for key in permissions if key in actions]
+    if not available:
+        print("No special permissions have been granted to your account.")
+        return
+    print("\n========== YOUR SPECIAL ACCESS ==========")
+    for index, (key, (label, _)) in enumerate(available, 1):
+        print(f"{index}. {label}")
+    choice = input("Choose an authorized action (or Enter to return): ").strip()
+    if not choice:
+        return
+    if not choice.isdigit() or not 1 <= int(choice) <= len(available):
+        print("Invalid choice.")
+        return
+    available[int(choice) - 1][1][1]()
+
+
+def admin_menu(session):
+    while True:
+        print("\n========== ADMINISTRATOR MENU ==========")
+        print("1. Register New Employee")
+        print("2. Save Employee Information")
+        print("3. Display All Employees")
+        print("4. Search Employee by ID")
+        print("5. Submit Employee Information Change Request")
+        print("6. Submit Employee Deactivation Request")
+        print("7. Review Employee Requests")
+        print("8. Calculate Employee Gross Salary")
+        print("9. Display All Employees' Payroll")
+        print("10. View All Request History")
+        print("11. Change My Password")
+        print("12. Grant / Revoke Special Permissions")
+        print("13. Logout")
+        choice = input("Enter your choice: ").strip()
+        if choice == "1":
+            register_employee()
+        elif choice == "2":
+            try:
+                persist_employee_data()
+                print("Employee information saved.")
+            except OSError as error:
+                print("Could not save:", error)
+        elif choice == "3":
+            display_employees()
+        elif choice == "4":
+            search_employee()
+        elif choice == "5":
+            target = input("Enter the specific employee ID: ").strip().upper()
+            if target == session["employee_id"]:
+                print("You cannot approve your own change. A second administrator is required.")
+            elif target not in employees:
+                print("Employee not found.")
+            else:
+                request_field_change(target, session["employee_id"], "ADMIN")
+        elif choice == "6":
+            target = input("Enter employee ID to request deactivation: ").strip().upper()
+            if target == session["employee_id"]:
+                print("A second administrator is required to request changes to your own account.")
+            elif target not in employees:
+                print("Employee not found.")
+            else:
+                request_deactivation(target, session["employee_id"], "ADMIN")
+        elif choice == "7":
+            pending_requests_for_approver(session)
+        elif choice == "8":
+            calculate_gross_salary()
+        elif choice == "9":
+            display_payroll()
+        elif choice == "10":
+            try:
+                for item in requests.load_requests():
+                    print(f"{item['request_id']} | {item['employee_id']} | {item['request_type']} | {item['status']}")
+            except RuntimeError as error:
+                print(error)
+        elif choice == "11":
+            change_own_password(session)
+        elif choice == "12":
+            manage_special_permissions(session)
+        elif choice == "13":
+            print("Logged out.")
+            return
+        else:
+            print("Choose a number from 1 to 13.")
+
+
+def employee_menu(session):
+    employee_id = session["employee_id"]
+    while True:
+        print("\n========== EMPLOYEE MENU ==========")
+        print("1. View My Profile")
+        print("2. View My Payroll")
+        print("3. Submit My Information Change Request")
+        print("4. Submit My Account Deactivation Request")
+        print("5. View My Request History")
+        print("6. Review Administrator Requests About Me")
+        print("7. Change My Password")
+        print("8. Special Permission Access")
+        print("9. Logout")
+        choice = input("Enter your choice: ").strip()
+        if choice == "1":
+            show_personal_profile(employee_id)
+        elif choice == "2":
+            show_personal_payroll(employee_id)
+        elif choice == "3":
+            request_field_change(employee_id, employee_id, "USER")
+        elif choice == "4":
+            request_deactivation(employee_id, employee_id, "USER")
+        elif choice == "5":
+            show_requests_for_employee(employee_id)
+        elif choice == "6":
+            pending_requests_for_approver(session)
+        elif choice == "7":
+            change_own_password(session)
+        elif choice == "8":
+            employee_special_access(session)
+        elif choice == "9":
+            print("Logged out.")
+            return
+        else:
+            print("Choose a number from 1 to 9.")
+
+
+def main():
+    load_employees()
+    if not employees:
+        print("No employee records exist. Ask an administrator to restore or register employee data.")
+        return
+    try:
+        initialize_accounts(list(employees.keys()))
+    except (RuntimeError, OSError) as error:
+        print("Security setup could not continue:", error)
+        return
+
+    while True:
+        session = login()
+        if session is None:
+            retry = input("Try logging in again? (y/n): ").strip().lower()
+            if retry not in ("y", "yes"):
+                print("Goodbye.")
+                return
+            continue
+
+        employee = employees.get(session["employee_id"])
+        if employee is None or employee.get("account_status", "ACTIVE") != "ACTIVE":
+            print("Your employee record is inactive or missing. Contact the administrator.")
+            set_account_active(session["employee_id"], False)
+            continue
+
+        if session["role"] == "ADMIN":
+            admin_menu(session)
+        else:
+            employee_menu(session)
+
+
 if __name__ == "__main__":
     main()
