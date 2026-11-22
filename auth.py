@@ -4,7 +4,7 @@ import hmac
 import json
 import secrets
 from pathlib import Path
-from getpass import getpass
+import sys
 
 ACCOUNT_FILE = Path("accounts.txt")
 ADMIN_ID = "TTBR/0030/18"
@@ -69,11 +69,11 @@ def initialize_accounts(employee_ids):
     print("\n=== FIRST-TIME SECURITY SETUP ===")
     print(f"Create the administrator password for {ADMIN_ID} (Brhanu Kasahun).")
     while True:
-        password = getpass("New administrator password: ")
+        password = read_password("New administrator password: ")
         if not _valid_password(password):
             print("Use at least 8 characters with uppercase, lowercase, and a number.")
             continue
-        confirmation = getpass("Confirm administrator password: ")
+        confirmation = read_password("Confirm administrator password: ")
         if password != confirmation:
             print("Passwords do not match.")
             continue
@@ -172,3 +172,43 @@ def update_account_permissions(actor_id, employee_id, permission, grant=True):
     accounts[employee_id]["permissions"] = sorted(current)
     _save_accounts(accounts)
     return sorted(current)
+
+
+def read_password(prompt="Password: "):
+    """Read a password while showing stars; pasted text is accepted by the console."""
+    if sys.platform != "win32" or not sys.stdin.isatty():
+        from getpass import getpass
+        return getpass(prompt)
+
+    import msvcrt
+
+    print(prompt, end="", flush=True)
+    characters = []
+    while True:
+        char = msvcrt.getwch()
+
+        # Enter finishes the password.
+        if char in ("\r", "\n"):
+            print()
+            return "".join(characters)
+
+        # Backspace removes the last character and its star.
+        if char == "\b":
+            if characters:
+                characters.pop()
+                print("\b \b", end="", flush=True)
+            continue
+
+        # Ctrl+C cancels password entry.
+        if char == "\x03":
+            raise KeyboardInterrupt
+
+        # Ignore special keys such as arrows and function keys.
+        if char in ("\x00", "\xe0"):
+            msvcrt.getwch()
+            continue
+
+        # Ignore other control characters; accept normal and pasted text.
+        if char.isprintable():
+            characters.append(char)
+            print("*", end="", flush=True)

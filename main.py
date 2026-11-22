@@ -752,10 +752,9 @@ def main():
 # SECURITY LAYER: LOGIN, ROLES, AND TWO-WAY APPROVAL
 # The original payroll functions above are preserved.
 # ============================================================
-import getpass
 import secrets
 from auth import (
-    initialize_accounts, create_employee_account, authenticate,
+    initialize_accounts, create_employee_account, authenticate, read_password,
     change_password, set_account_active, get_account_permissions,
     update_account_permissions, AVAILABLE_PERMISSIONS
 )
@@ -797,8 +796,8 @@ def register_employee():
 
 def prompt_new_password(employee_id):
     while True:
-        password = getpass.getpass("New password (at least 8 characters, uppercase, lowercase, and number): ")
-        confirmation = getpass.getpass("Confirm new password: ")
+        password = read_password("New password (at least 8 characters, uppercase, lowercase, and number): ")
+        confirmation = read_password("Confirm new password: ")
         if password != confirmation:
             print("Passwords do not match.")
             continue
@@ -813,7 +812,7 @@ def prompt_new_password(employee_id):
 def login():
     print("\n========== SECURE LOGIN ==========")
     employee_id = input("Employee ID: ").strip().upper()
-    password = getpass.getpass("Password: ")
+    password = read_password("Password: ")
     session = authenticate(employee_id, password)
     if session is None:
         print("Invalid employee ID/password, or the account is inactive.")
@@ -1024,7 +1023,7 @@ def pending_requests_for_approver(session):
 
 def change_own_password(session):
     print("\n--- Change Password ---")
-    current = getpass.getpass("Current password: ")
+    current = read_password("Current password: ")
     verified = authenticate(session["employee_id"], current)
     if not verified:
         print("Current password is incorrect.")

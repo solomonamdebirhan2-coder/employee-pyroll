@@ -24,7 +24,7 @@ class SecurityWorkflowTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_first_run_creates_brhanu_as_admin_and_users_as_temporary_accounts(self):
-        with patch.object(auth, "getpass", side_effect=["StrongPass1", "StrongPass1"]), \
+        with patch.object(auth, "read_password", side_effect=["StrongPass1", "StrongPass1"]), \
              patch.object(auth.secrets, "token_urlsafe", return_value="TempPass123"), \
              redirect_stdout(io.StringIO()):
             accounts = auth.initialize_accounts(list(self.employees.keys()))
