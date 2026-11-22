@@ -1,0 +1,102 @@
+{
+    "EMP001": {
+        "employee_id": "EMP001",
+        "full_name": "Sample Employee 01",
+        "department": "Administration",
+        "position": "Officer",
+        "basic_salary": 8350.0,
+        "house_allowance": 1250.0,
+        "transport_allowance": 525.0,
+        "other_allowance": 260.0
+    },
+    "EMP002": {
+        "employee_id": "EMP002",
+        "full_name": "Sample Employee 02",
+        "department": "Finance",
+        "position": "Assistant",
+        "basic_salary": 8700.0,
+        "house_allowance": 1300.0,
+        "transport_allowance": 550.0,
+        "other_allowance": 270.0
+    },
+    "EMP003": {
+        "employee_id": "EMP003",
+        "full_name": "Sample Employee 03",
+        "department": "Human Resources",
+        "position": "Analyst",
+        "basic_salary": 9050.0,
+        "house_allowance": 1350.0,
+        "transport_allowance": 575.0,
+        "other_allowance": 280.0
+    },
+    "EMP004": {
+        "employee_id": "EMP004",
+        "full_name": "Sample Employee 04",
+        "department": "Information Technology",
+        "position": "Coordinator",
+        "basic_salary": 9400.0,
+        "house_allowance": 1400.0,
+        "transport_allowance": 600.0,
+        "other_allowance": 290.0
+    },
+    "EMP005": {
+        "employee_id": "EMP005",
+        "full_name": "Sample Employee 05",
+        "department": "Operations",
+        "position": "Specialist",
+        "basic_salary": 9750.0,
+        "house_allowance": 1450.0,
+        "transport_allowance": 625.0,
+        "other_allowance": 300.0
+    },
+    "EMP006": {
+        "employee_id": "EMP006",
+        "full_name": "Sample Employee 06",
+        "department": "Administration",
+        "position": "Officer",
+        "basic_salary": 10100.0,
+        "house_allowance": 1500.0,
+        "transport_allowance": 650.0,
+        "other_allowance": 310.0
+    },
+    "EMP007": {
+        "employee_id": "EMP007",
+        "full_name": "Sample Employee 07",
+        "department": "Finance",
+        "position": "Assistant",
+        "basic_salary": 10450.0,
+        "house_allowance": 1550.0,
+        "transport_allowance": 675.0,
+        "other_allowance": 320.0
+    },
+    "EMP008": {
+        "employee_id": "EMP008",
+        "full_name": "Sample Employee 08",
+        "department": "Human Resources",
+        "position": "Analyst",
+        "basic_salary": 10800.0,
+        "house_allowance": 1600.0,
+        "transport_allowance": 700.0,
+        "other_allowance": 330.0
+    },
+    "EMP009": {
+        "employee_id": "EMP009",
+        "full_name": "Sample Employee 09",
+        "department": "Information Technology",
+        "position": "Coordinator",
+        "basic_salary": 11150.0,
+        "house_allowance": 1650.0,
+        "transport_allowance": 725.0,
+        "other_allowance": 340.0
+    },
+    "EMP010": {
+        "employee_id": "EMP010",
+        "full_name": "Sample Employee 10",
+        "department": "Operations",
+        "position": "Specialist",
+        "basic_salary": 11500.0,
+        "house_allowance": 1700.0,
+        "transport_allowance": 750.0,
+        "other_allowance": 350.0
+    }
+}
